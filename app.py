@@ -1,10 +1,11 @@
 import streamlit as st
 from langchain_community.document_loaders.csv_loader import CSVLoader
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_core.prompts import PromptTemplate
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain.chains import LLMChain
+# from langchain import RunnableSequence
 from dotenv import load_dotenv
 import os
 
@@ -19,29 +20,22 @@ documents = loader.load()
 embeddings = OpenAIEmbeddings()
 db = FAISS.from_documents(documents, embeddings)
 
-# 2. Function for similarity search
+# Initialize conversation history in session state
+if "conversation_history" not in st.session_state:
+    st.session_state["conversation_history"] = []
 
+# Initialize the text area input in session state
+if "input_message" not in st.session_state:
+    st.session_state["input_message"] = ""
 
+# 2. Function to retrieve similar responses
 def retrieve_info(query):
     similar_response = db.similarity_search(query, k=3)
-
     page_contents_array = [doc.page_content for doc in similar_response]
-
     # print(page_contents_array)
 
     return page_contents_array
 
-
-# customer_messsage = """
-# Hello, 
-
-# I need your help cancelling an order I made.
-
-# Thank you.
-# """
-
-# results = retrieve_info(customer_messsage)
-# print(results)
 
 # 3. Setup LLMChain & prompts
 llm = ChatOpenAI(temperature=0.7, model="gpt-3.5-turbo")
@@ -73,23 +67,14 @@ prompt = PromptTemplate(
 
 chain = LLMChain(llm=llm, prompt=prompt)
 
-
-# 4. Retrieval augmented generation
-# def generate_response(message):
-#     best_practice = retrieve_info(message)
-#     response = chain.run(message=message, best_practice=best_practice)
-#     return response
-
-# Initialize conversation history
-conversation_history = []
-# breakpoint()
+# Function to update conversation history
 def update_conversation_history(user_message, bot_response):
     # Limit the history to the last 5 messages (adjust as needed)
-    conversation_history.append({"role": "user", "content": user_message})
-    conversation_history.append({"role": "assistant", "content": bot_response})
-    if len(conversation_history) > 10:
-        conversation_history.pop(0)
-        conversation_history.pop(0)
+    st.session_state["conversation_history"].append({"role": "user", "content": user_message})
+    st.session_state["conversation_history"].append({"role": "assistant", "content": bot_response})
+    # if len(conversation_history) > 10:
+    #     conversation_history.pop(0)
+    #     conversation_history.pop(0)
 
 def get_contextual_input(conversation_history, new_message):
     history_str = ""
@@ -100,37 +85,53 @@ def get_contextual_input(conversation_history, new_message):
     history_str += f"user: {new_message}\n"
     return history_str
 
+# 4. Retrieval augmented generation
 def generate_response(message):
-    contextual_input = get_contextual_input(conversation_history, message)
+    contextual_input = get_contextual_input(st.session_state["conversation_history"], message)
     best_practice = retrieve_info(contextual_input)
     response = chain.run(message=contextual_input, best_practice=best_practice)
     update_conversation_history(message, response)
     return response
 
+# Function to display conversation history
+def display_conversation_history():
+    # for entry in reversed(st.session_state["conversation_history"]):
+    #     role = "User" if entry["role"] == "user" else "Assistant"
+    #     st.info(f"**{role}:** {entry['content']}")
+    #     st.write("------------------------------------------------")
+    
+    # Access the conversation history from the session state
+    history = st.session_state["conversation_history"]
+    for i in range(len(history) - 1, -1, -2):
+        # Ensure there is a pair of messages (user and assistant) to display
+        if i - 1 >= 0:
+            # Get the user message and assistant response
+            user_entry = history[i - 1]
+            bot_entry = history[i]
+            # Display the user and bot message with a header "User:" and "Assistant:"
+            st.info(f"**User:** {user_entry['content']}")
+            st.write("------------------------------------------------")
+            st.info(f"**Assistant:** {bot_entry['content']}")
 
-# Define global conversation history
-if "conversation_history" not in st.session_state:
-    st.session_state["conversation_history"] = []
-
+# 5. Build the app with streamlit
 def main():
-    st.set_page_config(page_title="Customer Response Generator", page_icon=":bird:")
-    st.header("Customer Response Generator :bird:")
+    st.set_page_config(page_title="CustomerCareBot", page_icon="🤖")
+    st.header("CustomerCareBot 🤖")
 
-    message = st.text_area("Customer message")
-    if message:
+    # Text area for user input
+    st.session_state["input_message"] = st.text_area("Customer message", st.session_state["input_message"] )
+    
+    if st.session_state["input_message"] :
         with st.spinner("Generating best practice message..."):
             try:
-                # Get context-aware response
-                contextual_input = get_contextual_input(st.session_state["conversation_history"], message)
-                result = generate_response(contextual_input)
-                
-                # Update conversation history in session state
-                st.session_state["conversation_history"].append({"role": "user", "content": message})
-                st.session_state["conversation_history"].append({"role": "assistant", "content": result})
-                
-                st.info(result)
+                result = generate_response(st.session_state["input_message"] )
+                st.session_state["input_message"] = ""
+                # st.info(result)
             except Exception as e:
                 st.error(f"Error generating best practice message: {e}")
+
+    # Display conversation history
+    display_conversation_history()
 
 if __name__ == '__main__':
     main()
