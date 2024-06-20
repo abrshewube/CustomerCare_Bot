@@ -75,28 +75,62 @@ chain = LLMChain(llm=llm, prompt=prompt)
 
 
 # 4. Retrieval augmented generation
+# def generate_response(message):
+#     best_practice = retrieve_info(message)
+#     response = chain.run(message=message, best_practice=best_practice)
+#     return response
+
+# Initialize conversation history
+conversation_history = []
+# breakpoint()
+def update_conversation_history(user_message, bot_response):
+    # Limit the history to the last 5 messages (adjust as needed)
+    conversation_history.append({"role": "user", "content": user_message})
+    conversation_history.append({"role": "assistant", "content": bot_response})
+    if len(conversation_history) > 10:
+        conversation_history.pop(0)
+        conversation_history.pop(0)
+
+def get_contextual_input(conversation_history, new_message):
+    history_str = ""
+    for entry in conversation_history:
+        role = entry["role"]
+        content = entry["content"]
+        history_str += f"{role}: {content}\n"
+    history_str += f"user: {new_message}\n"
+    return history_str
+
 def generate_response(message):
-    best_practice = retrieve_info(message)
-    response = chain.run(message=message, best_practice=best_practice)
+    contextual_input = get_contextual_input(conversation_history, message)
+    best_practice = retrieve_info(contextual_input)
+    response = chain.run(message=contextual_input, best_practice=best_practice)
+    update_conversation_history(message, response)
     return response
 
-# 5. Build an app with streamlit
+
+# Define global conversation history
+if "conversation_history" not in st.session_state:
+    st.session_state["conversation_history"] = []
+
 def main():
-    st.set_page_config(
-        page_title="Customer response generator", page_icon=":bird:")
+    st.set_page_config(page_title="Customer Response Generator", page_icon=":bird:")
+    st.header("Customer Response Generator :bird:")
 
-    st.header("Customer response generator :bird:")
     message = st.text_area("Customer message")
-
     if message:
         with st.spinner("Generating best practice message..."):
             try:
-                result = generate_response(message)
-
+                # Get context-aware response
+                contextual_input = get_contextual_input(st.session_state["conversation_history"], message)
+                result = generate_response(contextual_input)
+                
+                # Update conversation history in session state
+                st.session_state["conversation_history"].append({"role": "user", "content": message})
+                st.session_state["conversation_history"].append({"role": "assistant", "content": result})
+                
                 st.info(result)
             except Exception as e:
                 st.error(f"Error generating best practice message: {e}")
-
 
 if __name__ == '__main__':
     main()
