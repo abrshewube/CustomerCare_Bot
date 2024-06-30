@@ -21,7 +21,7 @@ To run CustomerCareBot locally, follow these steps:
 1. Clone this repository:
 
    ```bash
-   git clone https://github.com/Tobsky/CustomerCare_Bot.git
+   git clone https://github.com/jankoabel/-CustomerCare_Bot
    cd your-repository
 
 2. Install dependencies:
